@@ -6,6 +6,7 @@ import {
   Trash2,
   X,
   RefreshCw,
+  Bot,
 } from "lucide-react";
 
 import api from "../api/axios";
@@ -51,9 +52,9 @@ export default function Tickets() {
         api.get("/usuarios"),
       ]);
 
-      setTickets(ticketsRes.data || []);
-      setCategorias(categoriasRes.data || []);
-      setUsuarios(usuariosRes.data || []);
+      setTickets(Array.isArray(ticketsRes.data) ? ticketsRes.data : []);
+      setCategorias(Array.isArray(categoriasRes.data) ? categoriasRes.data : []);
+      setUsuarios(Array.isArray(usuariosRes.data) ? usuariosRes.data : []);
     } catch (error) {
       console.error("Error cargando datos", error);
     } finally {
@@ -92,9 +93,7 @@ export default function Tickets() {
       descripcion: ticket.descripcion || "",
       prioridad: ticket.prioridad || "MEDIA",
       categoriaId: ticket.categoria?.id || "",
-      fechaLimite: ticket.fechaLimite
-        ? ticket.fechaLimite.substring(0, 10)
-        : "",
+      fechaLimite: ticket.fechaLimite ? ticket.fechaLimite.substring(0, 10) : "",
       tiempoEstimadoHoras: ticket.tiempoEstimadoHoras || "",
     });
 
@@ -110,7 +109,7 @@ export default function Tickets() {
     e.preventDefault();
 
     if (!usuarioAccionId) {
-      alert("No se encontró el usuario logueado. Cierra sesión e ingresa nuevamente.");
+      alert("No se encontró el usuario logueado.");
       return;
     }
 
@@ -161,13 +160,7 @@ export default function Tickets() {
   };
 
   const eliminarTicket = async (ticket) => {
-    if (!usuarioAccionId) {
-      alert("No se encontró el usuario logueado.");
-      return;
-    }
-
     const confirmar = confirm(`¿Eliminar el ticket "${ticket.titulo}"?`);
-
     if (!confirmar) return;
 
     try {
@@ -201,11 +194,6 @@ export default function Tickets() {
   };
 
   const cambiarEstado = async (ticketId, nuevoEstado) => {
-    if (!usuarioAccionId) {
-      alert("No se encontró el usuario logueado.");
-      return;
-    }
-
     try {
       await api.put("/api/tickets/estado", {
         ticketId,
@@ -220,12 +208,21 @@ export default function Tickets() {
     }
   };
 
+  const cortarTexto = (texto = "", limite = 95) => {
+    if (!texto) return "-";
+    return texto.length > limite ? `${texto.substring(0, limite)}...` : texto;
+  };
+
   const ticketsFiltrados = tickets.filter((ticket) =>
     `
+      ${ticket.codigo || ""}
       ${ticket.titulo || ""}
       ${ticket.descripcion || ""}
       ${ticket.estado || ""}
       ${ticket.prioridad || ""}
+      ${ticket.tipoSolicitud || ""}
+      ${ticket.areaDestino || ""}
+      ${ticket.respuestaIa || ""}
       ${ticket.categoria?.nombre || ""}
       ${ticket.usuario?.nombreCompleto || ""}
       ${ticket.tecnico?.nombreCompleto || ""}
@@ -246,7 +243,7 @@ export default function Tickets() {
             <div>
               <h1>Tickets</h1>
               <p className="subtitle">
-                Gestión de incidencias, requerimientos, técnicos y estados
+                Gestión de tickets, análisis IA, técnicos y estados
               </p>
             </div>
 
@@ -269,28 +266,26 @@ export default function Tickets() {
                 <Search size={18} />
                 <input
                   type="text"
-                  placeholder="Buscar por título, estado, prioridad, categoría..."
+                  placeholder="Buscar por código, descripción, IA, estado, solicitante..."
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
                 />
               </div>
 
-              <span className="table-count">
-                Total: {ticketsFiltrados.length}
-              </span>
+              <span className="table-count">Total: {ticketsFiltrados.length}</span>
             </div>
 
             <div className="table-responsive tickets-table">
               <table>
                 <thead>
                   <tr>
-                    <th>Ticket</th>
-                    <th>Categoría</th>
+                    <th>Código</th>
+                    <th>Descripción</th>
+                    <th>IA</th>
+                    <th>Área</th>
                     <th>Prioridad</th>
                     <th>Estado</th>
-                    <th>Tiempo</th>
-                    <th>Fecha límite</th>
-                    <th>Solicitante</th>
+                    <th>Cliente</th>
                     <th>Técnico</th>
                     <th>Acciones</th>
                   </tr>
@@ -312,15 +307,38 @@ export default function Tickets() {
                   ) : (
                     ticketsFiltrados.map((ticket) => (
                       <tr key={ticket.id}>
-                        <td data-label="Ticket">
-                          <strong>{ticket.titulo}</strong>
+                        <td data-label="Código">
+                          <strong>{ticket.codigo || "-"}</strong>
                           <small className="table-subtext">
-                            {ticket.descripcion}
+                            {ticket.fechaCreacion
+                              ? new Date(ticket.fechaCreacion).toLocaleDateString()
+                              : ""}
                           </small>
                         </td>
 
-                        <td data-label="Categoría">
-                          {ticket.categoria?.nombre || "Sin categoría"}
+                        <td data-label="Descripción">
+                          <strong>{ticket.titulo || "Sin título"}</strong>
+                          <small className="table-subtext">
+                            {cortarTexto(ticket.descripcion)}
+                          </small>
+                        </td>
+
+                        <td data-label="IA">
+                          {ticket.analizadoPorIa ? (
+                            <div className="ia-cell">
+                              <Bot size={16} />
+                              <strong>{ticket.tipoSolicitud || "IA"}</strong>
+                              <small>{cortarTexto(ticket.respuestaIa, 70)}</small>
+                            </div>
+                          ) : (
+                            <span className="badge">Manual</span>
+                          )}
+                        </td>
+
+                        <td data-label="Área">
+                          <span className="badge">
+                            {ticket.areaDestino || "-"}
+                          </span>
                         </td>
 
                         <td data-label="Prioridad">
@@ -345,19 +363,7 @@ export default function Tickets() {
                           </select>
                         </td>
 
-                        <td data-label="Tiempo">
-                          {ticket.tiempoEstimadoHoras
-                            ? `${ticket.tiempoEstimadoHoras} h`
-                            : "-"}
-                        </td>
-
-                        <td data-label="Fecha límite">
-                          {ticket.fechaLimite
-                            ? new Date(ticket.fechaLimite).toLocaleDateString()
-                            : "-"}
-                        </td>
-
-                        <td data-label="Solicitante">
+                        <td data-label="Cliente">
                           {ticket.usuario?.nombreCompleto || "-"}
                         </td>
 
@@ -370,7 +376,6 @@ export default function Tickets() {
                             }
                           >
                             <option value="">Sin asignar</option>
-
                             {tecnicos.map((tecnico) => (
                               <option key={tecnico.id} value={tecnico.id}>
                                 {tecnico.nombreCompleto}
@@ -416,7 +421,7 @@ export default function Tickets() {
                 <h2>{modo === "crear" ? "Nuevo Ticket" : "Editar Ticket"}</h2>
                 <p>
                   {modo === "crear"
-                    ? "Registra una nueva incidencia"
+                    ? "Registra un ticket manual como administrador"
                     : "Actualiza la información del ticket"}
                 </p>
               </div>
@@ -425,6 +430,18 @@ export default function Tickets() {
                 <X size={20} />
               </button>
             </div>
+
+            {ticketEditando?.analizadoPorIa && (
+              <div className="ia-box">
+                <Bot size={20} />
+                <div>
+                  <strong>Análisis IA</strong>
+                  <p><b>Tipo:</b> {ticketEditando.tipoSolicitud}</p>
+                  <p><b>Área:</b> {ticketEditando.areaDestino}</p>
+                  <p><b>Respuesta:</b> {ticketEditando.respuestaIa}</p>
+                </div>
+              </div>
+            )}
 
             <form className="drawer-body" onSubmit={guardarTicket}>
               <div className="form-group">
@@ -474,7 +491,6 @@ export default function Tickets() {
                   }
                 >
                   <option value="">Seleccione</option>
-
                   {categorias.map((categoria) => (
                     <option key={categoria.id} value={categoria.id}>
                       {categoria.nombre}
